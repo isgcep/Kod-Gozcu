@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>KodGözcü AI Agent</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#0d1117;color:#e6edf3;font-family:Arial,sans-serif}
+header{padding:20px;background:#161b22;border-bottom:1px solid #30363d}
+h1{margin:0;color:#a78bfa;font-size:23px}
+header p{color:#8b949e;margin-bottom:0}
+main{max-width:900px;margin:auto;padding:20px}
+.card{background:#161b22;border:1px solid #30363d;border-radius:12px;padding:18px;margin-bottom:18px}
+h2{font-size:17px;margin-top:0}
+input,textarea,select{width:100%;padding:12px;margin:8px 0 14px;background:#0d1117;border:1px solid #30363d;border-radius:7px;color:white}
+textarea{min-height:130px}
+button{background:#6366f1;color:white;border:0;border-radius:7px;padding:12px 18px;font-weight:bold;cursor:pointer}
+button.secondary{background:#30363d}
+.result{white-space:pre-wrap;background:#0d1117;border:1px solid #30363d;border-radius:7px;padding:14px;min-height:60px;color:#c9d1d9}
+.note{font-size:13px;color:#9ca3af;line-height:1.6}
+</style>
+</head>
+<body>
+<header>
+<h1>👁️ KodGözcü AI Agent</h1>
+<p>Proje geliştirme ve web sitesi analiz asistanı</p>
+</header>
+<main>
+<section class="card">
+<h2>🌐 Web Sitesi İnceleme</h2>
+<label>İncelenecek web sitesi adresi</label>
+<input id="siteUrl" type="url" placeholder="https://ornek.com">
+<button onclick="analyzeSite()">Adres Kontrolü</button>
+<div id="siteResult" class="result">Henüz adres kontrol edilmedi.</div>
+<p class="note">Bu ilk sürüm yalnızca adres biçimini kontrol eder. Gerçek site analizi için güvenli sunucu bağlantısı kurulacaktır.</p>
+</section>
+
+<section class="card">
+<h2>💻 Proje ve Kod Analizi</h2>
+<label>Proje veya kod hakkında bilgi</label>
+<textarea id="projectText" placeholder="Projenin amacını veya incelemek istediğin kodu buraya yaz..."></textarea>
+<button onclick="analyzeCode()">Analiz Talebi Hazırla</button>
+<div id="codeResult" class="result">Analiz bekleniyor.</div>
+</section>
+
+<section class="card">
+<h2>🔐 Güvenlik ve Onay</h2>
+<p class="note">Bu sürüm hiçbir dosyayı değiştirmez, komut çalıştırmaz ve web sitesinde işlem yapmaz. Değişiklikler için ileride açık onay sistemi kurulacaktır.</p>
+<label>Token tasarrufu</label>
+<select id="tokenMode">
+<option value="low">Ekonomik – kısa analiz</option>
+<option value="normal">Normal – ayrıntılı analiz</option>
+</select>
+</section>
+</main>
+<script>
+function analyzeSite(){
+ const value=document.getElementById('siteUrl').value.trim();
+ const result=document.getElementById('siteResult');
+ try{
+  const url=new URL(value);
+  if(!['http:','https:'].includes(url.protocol)) throw new Error();
+  result.textContent='Adres biçimi geçerli: '+url.href+
+  '\n\nDurum: Gerçek site analizi henüz sunucu bağlantısı bekliyor.';
+ }catch{
+  result.textContent='Geçerli bir http veya https adresi girin.';
+ }
+}
+function analyzeCode(){
+ const value=document.getElementById('projectText').value.trim();
+ const mode=document.getElementById('tokenMode').value;
+ const result=document.getElementById('codeResult');
+ if(!value){
+  result.textContent='Lütfen önce proje bilgisi veya kod girin.';
+  return;
+ }
+ result.textContent='Analiz talebi hazırlandı.\n\nMetin uzunluğu: '+value.length+
+ ' karakter\nAnaliz modu: '+(mode==='low'?'Ekonomik':'Normal')+
+ '\n\nGerçek AI analizi için güvenli sunucu bağlantısı kurulacak.';
+}
+</script>
+</body>
+</html>
