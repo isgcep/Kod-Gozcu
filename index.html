@@ -171,6 +171,18 @@
 on:
   pull_request:
     types: [opened, synchronize]
+    paths-ignore:
+      - '**.lock'
+      - '**.min.js'
+      - '**.min.css'
+      - 'dist/**'
+      - 'package-lock.json'
+      - 'yarn.lock'
+      - 'pnpm-lock.yaml'
+
+concurrency:
+  group: kodgozcu-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -238,7 +250,7 @@ jobs:
           import os, requests, time
 
           GH_LIMIT = 65000
-          DIFF_LIMIT = 80000
+          DIFF_LIMIT = 40000
 
           with open('diff.txt', encoding='utf-8', errors='replace') as f:
               diff = f.read()
@@ -306,7 +318,7 @@ jobs:
               )
               r.raise_for_status()
 
-          warn_trunc = "> ⚠️ Diff çok büyük olduğu için yalnızca ilk 80.000 karakter incelendi.\n\n" if truncated else ""
+          warn_trunc = "> ⚠️ Diff çok büyük olduğu için yalnızca ilk 40.000 karakter incelendi.\n\n" if truncated else ""
           header = f"## 👁️ KodGözcü AI İncelemesi\n\n{warn_trunc}{review}"
           footer = "\n\n---\n<sub>🔧 KodGözcü v1.0 | GitHub Actions + Groq AI</sub>"
 
@@ -595,5 +607,37 @@ index abc1234..def5678 100644
         let openHistoryIdx = null;
         function renderHistory() {
             const list = document.getElementById('historyList');
-            if  
-   
+            if (reviewHistory.length === 0) {
+                list.innerHTML = '<p style="color:#8b949e;font-size:14px;text-align:center;padding:40px 0;">Henüz inceleme yapılmadı.<br>"Kod İncele" sekmesinden başlayın.</p>';
+                openHistoryIdx = null;
+                return;
+            }
+            list.innerHTML = reviewHistory.map((item, idx) => `
+                <div class="history-item" onclick="toggleHistoryDetail(${idx})">
+                    <div class="history-time">${escapeHtml(item.time)}</div>
+                    <div class="history-preview">${escapeHtml(item.preview)}</div>
+                </div>
+                <div class="history-detail" id="hist-detail-${idx}" style="display:none;padding:12px;background:#0d1117;border:1px solid #30363d;border-radius:8px;margin:4px 0 8px;"></div>
+            `).join('');
+            openHistoryIdx = null;
+        }
+
+        function toggleHistoryDetail(idx) {
+            const detail = document.getElementById('hist-detail-' + idx);
+            if (!detail) return;
+            if (openHistoryIdx === idx) {
+                detail.style.display = 'none';
+                openHistoryIdx = null;
+                return;
+            }
+            if (openHistoryIdx !== null) {
+                const prev = document.getElementById('hist-detail-' + openHistoryIdx);
+                if (prev) prev.style.display = 'none';
+            }
+            detail.innerHTML = renderMarkdown(reviewHistory[idx].review);
+            detail.style.display = 'block';
+            openHistoryIdx = idx;
+        }
+    </script>
+</body>
+</html>
