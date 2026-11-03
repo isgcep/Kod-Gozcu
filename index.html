@@ -382,4 +382,217 @@ jobs:
                 if (line.startsWith('+++') || line.startsWith('---') || line.startsWith('diff ') || line.startsWith('index ')) {
                     annotated.push({ text: line, newLine: null, type: 'meta' });
                     continue;
-     
+                }
+                if (line.startsWith('+')) {
+                    annotated.push({ text: line, newLine: newLine, type: 'add' });
+                    newLine++;
+                } else if (line.startsWith('-')) {
+                    annotated.push({ text: line, newLine: null, type: 'del' });
+                } else if (line.startsWith(' ')) {
+                    annotated.push({ text: line, newLine: newLine, type: 'ctx' });
+                    newLine++;
+                } else {
+                    annotated.push({ text: line, newLine: null, type: 'other' });
+                }
+            }
+            return annotated;
+        }
+
+        async function runReview() {
+            const diff = document.getElementById('diffInput').value.trim();
+            const apiKey = document.getElementById('apiKey').value.trim();
+            const model = document.getElementById('modelSelect').value;
+            const resultDiv = document.getElementById('reviewResult');
+            const btn = document.getElementById('reviewBtn');
+
+            if (!diff) { alert('Lütfen bir diff girin!'); return; }
+
+            btn.disabled = true;
+            resultDiv.style.display = 'block';
+            resultDiv.className = 'review-output';
+
+            let preWarn = '';
+            if (diff.length > 80000) {
+                preWarn = '<div class="banner-warn">⚠️ Diff çok büyük — yalnızca ilk 80.000 karakter incelenecek.</div>';
+            }
+            resultDiv.innerHTML = preWarn + '<div class="loading"><div class="spinner"></div> KodGözcü inceliyor...</div>';
+
+            if (apiKey && !apiKey.startsWith('gsk_')) {
+                resultDiv.innerHTML = '<span class="status-badge status-error">❌ Geçersiz API key formatı (gsk_ ile başlamalı)</span>';
+                btn.disabled = false;
+                return;
+            }
+
+            if (!apiKey) {
+                await new Promise(r => setTimeout(r, 1200));
+                const demo = generateDemoReview(diff);
+                const banner = '<div class="banner-warn">⚠️ API key girilmedi — <b>demo modu</b> aktif. Gerçek AI incelemesi için Groq key girin.</div>';
+                showReview(preWarn + banner + demo, resultDiv, btn, diff);
+                return;
+            }
+
+            try {
+                const resp = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${apiKey}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        model: model,
+                        messages: [{ role: 'user', content: buildPrompt(diff) }],
+                        temperature: 0.3,
+                        max_tokens: 2000
+                    })
+                });
+                if (!resp.ok) {
+                    const err = await resp.json().catch(() => ({}));
+                    throw new Error(err.error?.message || `HTTP ${resp.status}`);
+                }
+                const data = await resp.json();
+                const review = data.choices[0].message.content;
+                const truncated = data.choices[0].finish_reason === 'length';
+                const warn = truncated
+                    ? '<div class="banner-err">⚠️ Yanıt token limitinde kesildi — diff çok büyük olabilir.</div>'
+                    : '';
+                showReview(preWarn + warn + review, resultDiv, btn, diff);
+            } catch (e) {
+                resultDiv.innerHTML = `<span class="status-badge status-error">❌ Hata: ${escapeHtml(e.message)}</span>`;
+                btn.disabled = false;
+            }
+        }
+
+        function buildPrompt(diff) {
+            return `Sen kıdemli bir yazılım mühendisisin. Bu PR diff'ini incele:
+
+🔍 İnceleme Kriterleri:
+- 🐛 Bug ve mantık hataları
+- 🔒 Güvenlik açıkları
+- ⚡ Performans sorunları
+- 📝 Kod kalitesi ve okunabilirlik
+- 💡 İyileştirme önerileri
+
+Türkçe, kısa ve net yorumlar yaz. Markdown kullan.
+Kaliteliyse "LGTM ✅" de. Sorun varsa dosya adı ve satır belirt.
+
+DIFF:
+${diff.substring(0, 80000)}`;
+        }
+
+        function generateDemoReview(diff) {
+            const annotated = annotateDiffLines(diff);
+            const issues = [];
+            let hasBug = false, hasSecurity = false, hasPerf = false;
+
+            for (const { text, newLine, type } of annotated) {
+                if (type !== 'add') continue;
+                const loc = newLine != null ? `Satır ${newLine}` : 'Yeni satır';
+
+                if (/\beval\s*\(|\bexec\s*\(/.test(text)) {
+                    issues.push(`🔒 **${loc}: Güvenlik Riski** — \`eval()\`/\`exec()\` kullanımı tehlikelidir.`);
+                    hasSecurity = true;
+                }
+                if (/[!=]=\s*null\b/.test(text) && !/[!=]==/.test(text)) {
+                    issues.push(`🐛 **${loc}: Gevşek Null Kontrolü** — \`==\` yerine \`===\` kullanın.`);
+                    hasBug = true;
+                }
+                if (/\bfor\s*\(/.test(text)) {
+                    issues.push(`⚡ **${loc}: Döngü** — Büyük veri setlerinde performans etkisi olabilir.`);
+                    hasPerf = true;
+                }
+                if (/\bconsole\.log\s*\(|\bprint\s*\(/.test(text)) {
+                    issues.push(`📝 **${loc}: Debug Çıktısı** — Production kodunda debug çıktısı bırakılmamalı.`);
+                }
+            }
+
+            if (issues.length === 0) {
+                return `## 👁️ KodGözcü İncelemesi\n\n### Genel Değerlendirme\n\n✅ Kod değişiklikleri temiz görünüyor.\n\n- 🐛 Belirgin bug bulunamadı\n- 🔒 Güvenlik riski tespit edilmedi\n- ⚡ Performans açısından sorun görünmüyor\n- 📝 Kod stili tutarlı\n\n**Sonuç:** LGTM ✅`;
+            }
+
+            let review = `## 👁️ KodGözcü İncelemesi\n\n### Bulunan Sorunlar (${issues.length})\n\n`;
+            issues.forEach((issue, i) => { review += `${i + 1}. ${issue}\n\n`; });
+
+            review += `### Özet\n`;
+            if (hasSecurity) review += `- 🔒 Güvenlik açığı tespit edildi, acil düzeltme gerekli\n`;
+            if (hasBug)      review += `- 🐛 Potansiyel bug bulundu\n`;
+            if (hasPerf)     review += `- ⚡ Performans iyileştirme önerisi var\n`;
+            return review;
+        }
+
+        function safeSaveHistory() {
+            while (reviewHistory.length > 0) {
+                try {
+                    localStorage.setItem('kodgozcu_history', JSON.stringify(reviewHistory));
+                    return;
+                } catch (e) {
+                    if (e.name === 'QuotaExceededError' || e.code === 22) {
+                        reviewHistory.pop();
+                    } else {
+                        console.warn('localStorage yazılamadı:', e);
+                        return;
+                    }
+                }
+            }
+        }
+
+        function showReview(review, resultDiv, btn, diff) {
+            resultDiv.className = 'review-output has-content';
+            resultDiv.innerHTML = renderMarkdown(review);
+            btn.disabled = false;
+
+            const entry = {
+                time: new Date().toLocaleString('tr-TR'),
+                preview: diff.substring(0, 100) + (diff.length > 100 ? '...' : ''),
+                review: review
+            };
+            reviewHistory.unshift(entry);
+            if (reviewHistory.length > 20) reviewHistory.pop();
+            safeSaveHistory();
+        }
+
+        function loadSample() {
+            document.getElementById('diffInput').value = `diff --git a/src/auth.py b/src/auth.py
+index abc1234..def5678 100644
+--- a/src/auth.py
++++ b/src/auth.py
+@@ -1,8 +1,10 @@
+ import hashlib
+ 
+ def authenticate(username, password):
+-    user = get_user(username)
+-    if user.password == password:
++    user = get_user(username)
++    if user is None:
++        return False
++    if user.password == hashlib.md5(password.encode()).hexdigest():
+         return True
+     return False
+ 
+ def create_token(user_id):
+-    return eval(f"user_{user_id}")
++    return f"token_{user_id}_{generate_random()}"`;
+        }
+
+        function clearReview() {
+            document.getElementById('diffInput').value = '';
+            document.getElementById('reviewResult').style.display = 'none';
+        }
+
+        function copyWorkflow() {
+            const code = document.getElementById('workflowCode');
+            const btn = document.querySelector('#tab-workflow .copy-btn');
+            const restore = () => { btn.textContent = '📋 Kopyala'; };
+            const onOk = () => { btn.textContent = '✅ Kopyalandı'; setTimeout(restore, 2000); };
+            if (navigator.clipboard && window.isSecureContext) {
+                navigator.clipboard.writeText(code.value).then(onOk).catch(() => {
+                    code.select(); document.execCommand('copy'); onOk();
+                });
+            } else {
+                code.select(); document.execCommand('copy'); onOk();
+            }
+        }
+
+        let openHistoryIdx = null;
+        function renderHistory() {
+            const list = document.getElementById('historyList');
+            if
